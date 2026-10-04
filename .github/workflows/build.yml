@@ -26,7 +26,12 @@ jobs:
       - name: keystore
         run: |
           mkdir -p keystore
-          base64 -d keystore/debug.keystore.b64 > keystore/debug.keystore
+          if [ -f keystore/debug.keystore.b64 ]; then
+            base64 -d keystore/debug.keystore.b64 > keystore/debug.keystore
+          else
+            keytool -genkeypair -v -keystore keystore/debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Luntik Debug,O=LuntikVisuals,C=RU"
+          fi
+          ls -la keystore
       - uses: gradle/actions/setup-gradle@v4
       - name: wrapper
         run: gradle wrapper --gradle-version 8.9 || true
