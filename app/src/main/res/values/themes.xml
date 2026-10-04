@@ -1,0 +1,1 @@
+<resources><style name="Theme.LuntikWallet" parent="android:Theme.Material.NoActionBar"><item name="android:statusBarColor">#00000000</item><item name="android:navigationBarColor">#00000000</item><item name="android:windowBackground">#07070C</item></style></resources>
