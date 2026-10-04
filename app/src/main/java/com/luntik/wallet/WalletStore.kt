@@ -111,8 +111,8 @@ class WalletStore(ctx: Context) {
 
     fun rushReview(): String {
         if (phase != CardPhase.REVIEW) return "Нет заявки"
-        if (balance < 100) return "Нужно 100 LC"
-        balance -= 100
+        if (balance < 100.0) return "Нужно 100 LC"
+        balance -= 100.0
         phaseAt = System.currentTimeMillis() - 59 * 60_000L
         return "Рассмотрение ускорено: ответ примерно через минуту"
     }
@@ -158,7 +158,7 @@ class WalletStore(ctx: Context) {
     fun tickPayout(now: Long) {
         if (pendingAmount > 0 && pendingAt in 1..now) {
             cardBalance += pendingAmount
-            pendingAmount = 0
+            pendingAmount = 0.0
             pendingAt = 0
             writeStoreRecord()
         }
@@ -194,7 +194,7 @@ class WalletStore(ctx: Context) {
         }
         lastBonusAt = now
         return when (Random.nextInt(100)) {
-            in 0..7 -> { balance += 8; "+8 LC" }
+            in 0..7 -> { balance += 8.0; "+8 LC" }
             in 8..11 -> { freeWithdraw = true; "Следующий вывод без комиссии" }
             else -> "Пусто"
         }.also { bonusText = it }
