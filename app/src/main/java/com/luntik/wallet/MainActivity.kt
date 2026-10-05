@@ -10,11 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +25,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -45,9 +42,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) notif.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            notif.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         if (intent?.getBooleanExtra("ok", false) == true) WalletStore(this).linked = true
         setContent { WalletRoot() }
     }
@@ -96,7 +93,7 @@ fun WalletRoot() {
                 when (tab) {
                     Tab.CARD -> CardTab(store, ::refresh)
                     Tab.CLICK -> ClickTab(store, ::refresh)
-                    Tab.SET -> Text("Вывод 50–50 000 LC приходит на карту за 1 мин – 24 ч.", color = Color.White.copy(0.7f), modifier = Modifier.padding(20.dp))
+                    Tab.SET -> Text("Уведомление приходит, когда заявку приняли или отклонили. Тест — в течение часа.", color = Color.White.copy(0.7f), modifier = Modifier.padding(20.dp))
                 }
             }
             Island(tab) { tab = it }
@@ -116,19 +113,24 @@ private fun Island(tab: Tab, on: (Tab) -> Unit) {
 @Composable
 private fun CardTab(store: WalletStore, refresh: () -> Unit) {
     var phase by remember { mutableStateOf(store.phase) }
-    var tick by remember { mutableIntStateOf(0) }
     var sub by remember { mutableStateOf("card") }
     var note by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { while (true) { store.tickCard(); store.tickPayout(System.currentTimeMillis()); phase = store.phase; refresh(); tick++; delay(1000) } }
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
+    var back by remember { mutableStateOf(false) }
+    var why by remember { mutableStateOf(store.purpose) }
+    var debit by remember { mutableStateOf(true) }
+    var name by remember { mutableStateOf(store.holder) }
+    var sur by remember { mutableStateOf(store.surname) }
+    var tel by remember { mutableStateOf(store.phone) }
+    var style by remember { mutableStateOf(CardDesign.LUNTIK.name) }
+    LaunchedEffect(Unit) { while (true) { store.tickCard(); store.tickPayout(System.currentTimeMillis()); phase = store.phase; refresh(); delay(1000) } }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GlassChip("Карта", sub == "card") { sub = "card" }
             GlassChip("Бонусы", sub == "bonus") { sub = "bonus" }
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         if (sub == "bonus") {
             Text(store.bonusText.ifBlank { "Раз в 6 часов. Чаще пусто." }, color = Color.White.copy(0.7f))
-            Spacer(Modifier.height(12.dp))
             GlassBtn("Проверить бонус") { note = store.claimBonus(); refresh() }
             if (note.isNotBlank()) Text(note, color = Color(0xFF8B9CFF))
             return@Column
@@ -136,31 +138,82 @@ private fun CardTab(store: WalletStore, refresh: () -> Unit) {
         when (phase) {
             CardPhase.NONE -> GlassBtn("Выпустить карту") { store.issue(); phase = store.phase }
             CardPhase.REVIEW -> {
-                Text("Заявка на рассмотрении. Ответ до часа.", color = Color.White)
-                Spacer(Modifier.height(8.dp))
+                Text("Заявка на рассмотрении. Ответ до часа, придёт уведомление.", color = Color.White)
                 GlassBtn("Ускорить за 100 LC") { note = store.rushReview(); refresh() }
-                if (note.isNotBlank()) Text(note, color = Color(0xFF8B9CFF))
             }
             CardPhase.REJECTED -> {
-                Text("Отклонено.", color = Color(0xFFFF8A9A))
+                Text("Заявка отклонена. Уведомление уже отправлено.", color = Color(0xFFFF8A9A))
                 GlassBtn("Подать снова") { store.issue(); phase = store.phase }
             }
-            CardPhase.MAKING -> Text("Одобрено. Карта делается ~30 минут.", color = Color.White)
-            CardPhase.READY -> {
-                val d = CardDesign.valueOf(store.design)
-                Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(20.dp)).background(Brush.linearGradient(listOf(Color(d.a), Color(d.b)))).padding(16.dp)) {
-                    Column {
-                        Text("LUNTIK · ${"%.1f".format(store.cardBalance)} LC", color = Color.White, fontWeight = FontWeight.Bold)
-                        Text(d.title, color = Color.White.copy(0.8f), fontSize = 12.sp)
-                        Spacer(Modifier.weight(1f))
-                        Text(store.pan, color = Color.White, fontSize = 18.sp)
-                        if (store.frozen) Text("ЗАМОРОЖЕНА", color = Color(0xFFFFE08A))
-                        if (store.pendingAmount > 0) Text("В пути ${"%.1f".format(store.pendingAmount)} LC", color = Color.White)
+            CardPhase.TEST_WAIT -> {
+                Text("Заявку приняли. Тест придёт в течение часа.", color = Color.White)
+                GlassBtn("Прислать тест сейчас за 100 LC") { note = store.rushTest(); phase = store.phase; refresh() }
+            }
+            CardPhase.TEST -> {
+                Text("Зачем тебе карта", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                Field(why) { why = it }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassChip("Дебет", debit) { debit = true }
+                    GlassChip("Кредит", !debit) { debit = false }
+                }
+                Text("Имя", color = Color.White.copy(0.7f), fontSize = 12.sp)
+                Field(name) { name = it }
+                Text("Фамилия можно не писать. !не писать реальную!", color = Color(0xFFFFE08A), fontSize = 11.sp)
+                Field(sur) { sur = it }
+                Text("Телефон. !не писать свой реальный номер!", color = Color(0xFFFFE08A), fontSize = 11.sp)
+                Field(tel) { tel = it }
+                Text("Стиль", color = Color.White, fontWeight = FontWeight.Bold)
+                CardDesign.entries.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { d -> GlassChip(d.title, style == d.name) { style = d.name } }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-                GlassBtn(if (store.frozen) "Разморозить" else "Заморозить") { store.frozen = !store.frozen; tick++ }
+                GlassBtn("Отправить тест") { note = store.submitTest(why, debit, name, sur, tel, style); phase = store.phase }
+            }
+            CardPhase.MAKING -> Text("Анкета принята. Карта делается ~30 минут.", color = Color.White)
+            CardPhase.READY -> {
+                CardFace(store, back)
+                Spacer(Modifier.height(8.dp))
+                GlassBtn(if (back) "Лицевая сторона" else "Перевернуть карту") { back = !back }
+                GlassBtn(if (store.frozen) "Разморозить" else "Заморозить") { store.frozen = !store.frozen }
                 GlassBtn("Перевыпуск") { store.reissue(); phase = store.phase }
+            }
+        }
+        if (note.isNotBlank()) Text(note, color = Color(0xFF8B9CFF), modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+@Composable
+private fun CardFace(store: WalletStore, back: Boolean) {
+    val d = runCatching { CardDesign.valueOf(store.design) }.getOrDefault(CardDesign.AURORA)
+    Box(Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(listOf(Color(d.a), Color(d.b))))) {
+        Canvas(Modifier.fillMaxSize()) {
+            when (d) {
+                CardDesign.LUNTIK -> drawCircle(Color(0xFFFF8FB8), 36.dp.toPx(), Offset(size.width * 0.72f, size.height * 0.62f))
+                CardDesign.SPONGE -> {
+                    repeat(6) { i -> drawCircle(Color(0xFFC98412), 10.dp.toPx(), Offset(size.width * (0.18f + (i % 3) * 0.22f), size.height * (0.35f + (i / 3) * 0.28f))) }
+                    drawCircle(Color(0xFFFF6AD5), 16.dp.toPx(), Offset(size.width * 0.82f, size.height * 0.28f))
+                }
+                CardDesign.SHREK -> {
+                    drawCircle(Color(0xFF3E7A32), 28.dp.toPx(), Offset(18.dp.toPx(), 24.dp.toPx()))
+                    drawCircle(Color(0xFF3E7A32), 28.dp.toPx(), Offset(size.width - 18.dp.toPx(), 24.dp.toPx()))
+                }
+                else -> {}
+            }
+        }
+        Column(Modifier.padding(16.dp)) {
+            if (!back) {
+                Text(d.title, color = Color.White, fontWeight = FontWeight.Bold)
+                Text(store.kind, color = Color.White.copy(0.8f), fontSize = 12.sp)
+                Spacer(Modifier.weight(1f))
+                Text(store.pan, color = Color.White, fontSize = 18.sp)
+                Text(listOf(store.holder, store.surname).filter { it.isNotBlank() }.joinToString(" "), color = Color.White.copy(0.85f))
+                if (store.frozen) Text("ЗАМОРОЖЕНА", color = Color(0xFFFFE08A))
+            } else {
+                Box(Modifier.fillMaxWidth().height(36.dp).background(Color.Black))
+                Spacer(Modifier.height(16.dp))
+                Text("CVC ${store.cvc}", color = Color.Black, modifier = Modifier.background(Color.White).padding(8.dp), fontWeight = FontWeight.Bold)
+                Text("LUNTIK  ·  подпись держателя", color = Color.White.copy(0.8f), fontSize = 12.sp)
             }
         }
     }
@@ -191,7 +244,7 @@ private fun ClickTab(store: WalletStore, refresh: () -> Unit) {
                     spots = List(5) { Offset(Random.nextFloat() * 0.72f + 0.08f, Random.nextFloat() * 0.55f + 0.2f) }
                 }
             }
-            if (store.autoUntil > now && store.sessionEnd > now) { store.balance += store.tapValue; refresh() }
+            if (store.autoUntil > now && store.sessionEnd > now && store.clickBanUntil < now) { store.balance += store.tapValue; refresh() }
             delay(1000)
         }
     }
@@ -199,37 +252,31 @@ private fun ClickTab(store: WalletStore, refresh: () -> Unit) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.End) {
                 Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(0.1f)).clickable { shop = !shop }, contentAlignment = Alignment.Center) {
-                    Canvas(Modifier.size(22.dp)) {
-                        drawCircle(Color.White, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
-                        drawLine(Color.White, Offset(size.width / 2, size.height * 0.28f), Offset(size.width / 2, size.height * 0.68f), 3f, StrokeCap.Round)
-                    }
+                    Canvas(Modifier.size(22.dp)) { drawCircle(Color.White, style = Stroke(2f)); drawLine(Color.White, Offset(size.width / 2, size.height * 0.28f), Offset(size.width / 2, size.height * 0.68f), 3f, StrokeCap.Round) }
                 }
             }
-            val active = store.sessionEnd > now
+            val active = store.sessionEnd > now && store.clickBanUntil < now
+            val banned = store.clickBanUntil > now
             val cd = store.cooldownEnd > now
-            val cdLeft = ((store.cooldownEnd - now) / 1000).coerceAtLeast(0)
-            Text(if (active) "Сессия" else if (cd) "Кулдаун ${cdLeft / 60}:${(cdLeft % 60).toString().padStart(2, '0')}" else "Готов", color = Color.White.copy(0.6f))
+            val left = ((if (banned) store.clickBanUntil else store.cooldownEnd) - now) / 1000
+            Text(when { banned -> "Бан ${left / 60}:${(left % 60).toString().padStart(2, '0')}"; active -> "Сессия"; cd -> "Кулдаун"; else -> "Готов" }, color = Color.White.copy(0.6f))
             Spacer(Modifier.height(12.dp))
-            Box(Modifier.size((140 * s.value).dp).clip(CircleShape).background(Brush.radialGradient(listOf(Color(0xFF8B9CFF), Color(0xFF2A2A44)))).clickable(enabled = active && !check) { store.balance += store.tapValue; refresh() }, contentAlignment = Alignment.Center) {
-                Text("TAP", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(16.dp))
-            if (!active) GlassBtn(if (cd) "Жди кулдаун" else "Начать сессию") { store.startSession(now) }
+            Box(Modifier.size((140 * s.value).dp).clip(CircleShape).background(Brush.radialGradient(listOf(Color(0xFF8B9CFF), Color(0xFF2A2A44)))).clickable(enabled = active && !check) {
+                msg = store.registerTap(System.currentTimeMillis()) ?: ""
+                refresh()
+            }, contentAlignment = Alignment.Center) { Text("TAP", color = Color.White, fontWeight = FontWeight.Bold) }
+            if (msg.isNotBlank()) Text(msg, color = Color(0xFFFF8A9A), fontSize = 12.sp)
+            Spacer(Modifier.height(12.dp))
+            if (!active) GlassBtn(if (banned || cd) "Жди" else "Начать сессию") { store.startSession(now) }
             if (shop) Shop(store, refresh)
-            if (check) Check(spots, hits, {
-                hits++
-                if (hits >= 5) { store.checksDone++; check = false }
-            }, {
+            if (check) Check(spots, hits, { hits++; if (hits >= 5) { store.checksDone++; check = false } }, {
                 store.fails++
-                if (store.fails >= 3) { store.sessionEnd = 1; store.closeSession(now); check = false }
-                else { hits = 0; spots = List(5) { Offset(Random.nextFloat() * 0.72f + 0.08f, Random.nextFloat() * 0.55f + 0.2f) } }
+                if (store.fails >= 3) { store.sessionEnd = 1; store.closeSession(now); check = false } else { hits = 0; spots = List(5) { Offset(Random.nextFloat() * 0.72f + 0.08f, Random.nextFloat() * 0.55f + 0.2f) } }
             })
         }
         if (panel) {
             Column(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(250.dp).background(Color(0xEE12121A)).padding(16.dp)) {
-                Text("Вывод", color = Color.White, fontWeight = FontWeight.Bold)
-                Text("От 50 до 50 000", color = Color.White.copy(0.6f), fontSize = 12.sp)
-                Text("На кликере ${"%.1f".format(store.balance)}", color = Color(0xFF8B9CFF), fontSize = 12.sp)
+                Text("Вывод 50–50 000", color = Color.White, fontWeight = FontWeight.Bold)
                 BasicTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(8) }, textStyle = TextStyle(color = Color.White, fontSize = 18.sp), cursorBrush = SolidColor(Color(0xFF8B9CFF)), singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
                 GlassBtn("Вывести") { msg = store.requestPayout(amount.toDoubleOrNull() ?: 0.0); refresh() }
                 Text(msg, color = Color.White.copy(0.75f), fontSize = 12.sp)
@@ -258,14 +305,16 @@ private fun buy(store: WalletStore, price: Double, apply: () -> Unit) { if (stor
 @Composable
 private fun Check(spots: List<Offset>, hits: Int, onHit: () -> Unit, onFail: () -> Unit) {
     LaunchedEffect(hits, spots) { delay(8000); if (hits < 5) onFail() }
-    Box(Modifier.fillMaxWidth().height(240.dp)) {
+    Box(Modifier.fillMaxWidth().height(220.dp)) {
         Text("5 точек за 8 сек ($hits/5)", color = Color.White, modifier = Modifier.padding(8.dp))
-        spots.forEachIndexed { i, o ->
-            if (i >= hits) Box(Modifier.offset(x = (o.x * 250).dp, y = (o.y * 170).dp).size(42.dp).clip(CircleShape).background(Color(0xFF5CFFB0)).clickable { onHit() })
-        }
+        spots.forEachIndexed { i, o -> if (i >= hits) Box(Modifier.offset(x = (o.x * 250).dp, y = (o.y * 150).dp).size(42.dp).clip(CircleShape).background(Color(0xFF5CFFB0)).clickable { onHit() }) }
     }
 }
 
+@Composable
+private fun Field(value: String, on: (String) -> Unit) {
+    BasicTextField(value, on, textStyle = TextStyle(color = Color.White, fontSize = 16.sp), cursorBrush = SolidColor(Color(0xFF8B9CFF)), singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(0.08f)).padding(12.dp))
+}
 @Composable
 private fun GlassBtn(label: String, on: () -> Unit) {
     Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp)).background(Color.White.copy(0.1f)).border(1.dp, Color.White.copy(0.18f), RoundedCornerShape(16.dp)).clickable(onClick = on).padding(14.dp), contentAlignment = Alignment.Center) {
@@ -274,5 +323,5 @@ private fun GlassBtn(label: String, on: () -> Unit) {
 }
 @Composable
 private fun GlassChip(label: String, sel: Boolean, on: () -> Unit) {
-    Text(label, color = if (sel) Color.Black else Color.White, modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(if (sel) Color(0xFF8B9CFF) else Color.White.copy(0.08f)).clickable(onClick = on).padding(horizontal = 14.dp, vertical = 8.dp))
+    Text(label, color = if (sel) Color.Black else Color.White, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp)).background(if (sel) Color(0xFF8B9CFF) else Color.White.copy(0.08f)).clickable(onClick = on).padding(horizontal = 12.dp, vertical = 8.dp))
 }
