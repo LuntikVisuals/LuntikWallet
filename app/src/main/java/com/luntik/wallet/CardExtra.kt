@@ -25,9 +25,9 @@ class CardExtra(ctx: Context) {
         val next = (listOf(line) + history()).take(10).joinToString("\n")
         p.edit().putString("hist", next).apply()
     }
-    fun foreverBan(why: String) {
-        forever = true
-        banReason = why
-        add("Бан навсегда: $why")
+    fun paid(order: String) = p.getString("paid", "")!!.split(",").contains(order)
+    fun markPaid(order: String) {
+        val next = (p.getString("paid", "")!!.split(",").filter { it.isNotBlank() } + order).distinct().joinToString(",")
+        p.edit().putString("paid", next).apply()
     }
 }
