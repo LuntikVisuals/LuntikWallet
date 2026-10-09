@@ -55,8 +55,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val lp = window.attributes
-        if (Build.VERSION.SDK_INT >= 30) display?.supportedModes?.maxByOrNull { it.refreshRate }?.let { lp.preferredDisplayModeId = it.modeId }
-        else lp.preferredRefreshRate = 120f
+        if (Build.VERSION.SDK_INT >= 30) display?.supportedModes?.maxByOrNull { it.refreshRate }?.let { lp.preferredDisplayModeId = it.modeId } else lp.preferredRefreshRate = 120f
         window.attributes = lp
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notif.launch(Manifest.permission.POST_NOTIFICATIONS)
         if (intent?.getBooleanExtra("ok", false) == true) WalletStore(this).linked = true
@@ -84,8 +83,6 @@ fun WalletRoot() {
     var glass by remember { mutableStateOf(false) }
     fun refresh() { bal = store.balance; cardBal = store.cardBalance }
     val pair = bgs[bg.coerceIn(0, bgs.lastIndex)]
-    val enter = if (anim) slideInHorizontally(tween(280)) { -it } + fadeIn(tween(220)) else fadeIn(tween(1))
-    val exit = if (anim) slideOutHorizontally(tween(220)) { -it } + fadeOut(tween(160)) else fadeOut(tween(1))
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(pair.first), Color(pair.second)))).pointerInput(Unit) {
         detectHorizontalDragGestures { _, drag -> if (drag > 36) glass = true else if (drag < -36) glass = false }
     }) {
@@ -104,8 +101,8 @@ fun WalletRoot() {
             Box(Modifier.weight(1f)) {
                 when (tab) {
                     Tab.CARD -> CardTab(store, extra, accent, anim, ::refresh)
-                    Tab.CLICK -> ClickTab(store, extra, accent, anim, ::refresh)
-                    Tab.SET -> SettingsTab(accent, bg, anim, { accent = it; prefs.edit().putLong("accent", it).apply() }, { bg = it; prefs.edit().putInt("bg", it).apply() }, { anim = it; prefs.edit().putBoolean("anim", it).apply() })
+                    Tab.CLICK -> ClickTab(store, extra, accent, ::refresh)
+                    Tab.SET -> SettingsTab(accent, anim, { accent = it; prefs.edit().putLong("accent", it).apply() }, { bg = it; prefs.edit().putInt("bg", it).apply() }, { anim = it; prefs.edit().putBoolean("anim", it).apply() })
                 }
             }
             Row(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding().clip(RoundedCornerShape(28.dp)).background(Color.White.copy(0.08f)).padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -114,13 +111,11 @@ fun WalletRoot() {
                 }
             }
         }
-        AnimatedVisibility(visible = glass, enter = enter, exit = exit) {
+        AnimatedVisibility(visible = glass, enter = slideInHorizontally(tween(if (anim) 280 else 1)) { -it } + fadeIn(tween(if (anim) 220 else 1)), exit = slideOutHorizontally(tween(if (anim) 220 else 1)) { -it } + fadeOut(tween(if (anim) 160 else 1))) {
             Column(Modifier.fillMaxHeight().width(250.dp).statusBarsPadding().clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)).background(Color.White.copy(0.14f)).border(1.dp, Color.White.copy(0.28f), RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)).pointerInput(Unit) { detectVerticalDragGestures { _, drag -> if (drag > 40) glass = false } }.padding(16.dp)) {
-                Text("Стекло", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text("Свайп вниз закроет", color = Color.White.copy(0.55f), fontSize = 12.sp)
+                Text("Стекло", color = Color.White, fontWeight = FontWeight.Bold)
                 GlassBtn("Карта", accent) { tab = Tab.CARD; glass = false }
                 GlassBtn("Кликер", accent) { tab = Tab.CLICK; glass = false }
-                GlassBtn("Настройки", accent) { tab = Tab.SET; glass = false }
                 Text("Закрыть", color = Color(accent), modifier = Modifier.clickable { glass = false }.padding(8.dp))
             }
         }
@@ -134,7 +129,6 @@ private fun CardTab(store: WalletStore, extra: CardExtra, accent: Long, anim: Bo
     var askPin by remember { mutableStateOf(false) }
     var pinIn by remember { mutableStateOf("") }
     var sub by remember { mutableStateOf("card") }
-    var hist by remember { mutableStateOf(extra.history()) }
     var why by remember { mutableStateOf(store.purpose) }
     var debit by remember { mutableStateOf(true) }
     var name by remember { mutableStateOf(store.holder) }
@@ -142,22 +136,17 @@ private fun CardTab(store: WalletStore, extra: CardExtra, accent: Long, anim: Bo
     var tel by remember { mutableStateOf(store.phone) }
     var style by remember { mutableStateOf(CardDesign.LUNTIK.name) }
     var shine by remember { mutableStateOf(false) }
-    val shineX = animateFloatAsState(if (shine && anim) 1f else 0f, tween(if (anim) 300 else 1), label = "shine")
-    fun flip() {
-        if (back) { back = false; return }
-        askPin = true
-        pinIn = ""
-    }
+    val turn = animateFloatAsState(if (back) 1f else 0f, tween(if (anim) 300 else 1), label = "turn")
+    val shineX = animateFloatAsState(if (shine && anim) 1f else 0f, tween(300), label = "shine")
+    fun flip() { if (back) back = false else { askPin = true; pinIn = "" }; shine = anim }
     LaunchedEffect(phase) { while (phase == CardPhase.REVIEW || phase == CardPhase.TEST_WAIT || phase == CardPhase.MAKING) { delay(1500); store.tickCard(); phase = store.phase; refresh() } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Row { GlassChip("Карта", sub == "card", accent) { sub = "card" }; Spacer(Modifier.width(8.dp)); GlassChip("История", sub == "hist", accent) { sub = "hist"; hist = extra.history() } }
-        if (sub == "hist") { hist.ifEmpty { listOf("Пусто") }.forEach { Text(it, color = Color.White.copy(0.8f), modifier = Modifier.padding(vertical = 4.dp)) }; return@Column }
+        Row { GlassChip("Карта", sub == "card", accent) { sub = "card" }; Spacer(Modifier.width(6.dp)); GlassChip("Бонусы", sub == "bonus", accent) { sub = "bonus" }; Spacer(Modifier.width(6.dp)); GlassChip("История", sub == "hist", accent) { sub = "hist" } }
+        if (sub == "bonus") { GlassBtn("Проверить бонус", accent) { note = store.claimBonus(); if (note != "Бонус раз в 6 часов" && note != "Пусто") extra.add("Бонус: $note"); refresh() }; Text(note.ifBlank { store.bonusText }, color = Color.White); return@Column }
+        if (sub == "hist") { extra.history().ifEmpty { listOf("Пусто") }.forEach { Text(it, color = Color.White.copy(0.8f), modifier = Modifier.padding(vertical = 4.dp)) }; return@Column }
         when (phase) {
             CardPhase.NONE -> GlassBtn("Выпустить карту", accent) { store.issue(); phase = store.phase }
-            CardPhase.REVIEW, CardPhase.TEST_WAIT, CardPhase.MAKING -> {
-                Text(phase.name, color = Color.White)
-                GlassBtn("Ускорить сейчас", accent) { phase = store.skipNow(); extra.ensureExp(); extra.add("Ускорение заявки"); refresh() }
-            }
+            CardPhase.REVIEW, CardPhase.TEST_WAIT, CardPhase.MAKING -> { Text(phase.name, color = Color.White); GlassBtn("Ускорить сейчас", accent) { phase = store.skipNow(); extra.ensureExp(); extra.add("Ускорение заявки"); refresh() } }
             CardPhase.REJECTED -> GlassBtn("Подать снова", accent) { store.issue(); phase = store.phase }
             CardPhase.TEST -> {
                 Field(why) { why = it }
@@ -169,8 +158,8 @@ private fun CardTab(store: WalletStore, extra: CardExtra, accent: Long, anim: Bo
             }
             CardPhase.READY -> {
                 extra.ensureExp()
-                CardFace(store, extra, back, shineX.value) { flip(); if (anim) shine = true }
-                GlassBtn(if (back) "Лицо" else "Перевернуть", accent) { flip(); if (anim) shine = true }
+                CardFace(store, extra, turn.value > 0.5f, shineX.value) { flip() }
+                GlassBtn(if (back) "Лицо" else "Перевернуть", accent) { flip() }
                 GlassBtn(if (store.frozen) "Разморозить" else "Заморозить", accent) { store.frozen = !store.frozen }
                 GlassBtn("Перевыпуск", accent) { store.reissue(); phase = store.phase }
             }
@@ -178,12 +167,7 @@ private fun CardTab(store: WalletStore, extra: CardExtra, accent: Long, anim: Bo
         if (askPin) {
             Text(if (extra.pin.isBlank()) "Придумай пин из 4 цифр" else "Введи пин", color = Color.White)
             Field(pinIn) { pinIn = it.filter { ch -> ch.isDigit() }.take(4) }
-            GlassBtn("Ок", accent) {
-                if (pinIn.length == 4 && (extra.pin.isBlank() || extra.pin == pinIn)) {
-                    if (extra.pin.isBlank()) extra.pin = pinIn
-                    back = true; askPin = false; shine = false
-                } else note = "Неверный пин"
-            }
+            GlassBtn("Ок", accent) { if (pinIn.length == 4 && (extra.pin.isBlank() || extra.pin == pinIn)) { if (extra.pin.isBlank()) extra.pin = pinIn; back = true; askPin = false } else note = "Неверный пин" }
         }
         if (note.isNotBlank()) Text(note, color = Color(accent))
     }
@@ -198,15 +182,11 @@ private fun WalletStore.skipNow(): CardPhase {
     return phase
 }
 @Composable
-private fun SettingsTab(accent: Long, bg: Int, anim: Boolean, onAccent: (Long) -> Unit, onBg: (Int) -> Unit, onAnim: (Boolean) -> Unit) {
+private fun SettingsTab(accent: Long, anim: Boolean, onAccent: (Long) -> Unit, onBg: (Int) -> Unit, onAnim: (Boolean) -> Unit) {
     val ctx = LocalContext.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("Акцент", color = Color.White)
         Row { accents.forEach { GlassChip(" ", accent == it, it) { onAccent(it) }; Spacer(Modifier.width(6.dp)) } }
-        Text("Фон, сразу", color = Color.White, modifier = Modifier.padding(top = 12.dp))
-        GlassBtn("Тёмный", accent) { onBg(0) }
-        GlassBtn("Синий", accent) { onBg(1) }
-        GlassBtn("Ночной", accent) { onBg(2) }
+        GlassBtn("Тёмный", accent) { onBg(0) }; GlassBtn("Синий", accent) { onBg(1) }; GlassBtn("Ночной", accent) { onBg(2) }
         GlassBtn(if (anim) "Анимации вкл" else "Анимации выкл", accent) { onAnim(!anim) }
         GlassBtn("Иконка: стекло", accent) { setIcon(ctx, "IconDefault") }
         GlassBtn("Иконка: Лунтик", accent) { setIcon(ctx, "IconLuntik") }
@@ -221,24 +201,25 @@ private fun setIcon(ctx: android.content.Context, which: String) {
 @Composable
 private fun CardFace(store: WalletStore, extra: CardExtra, back: Boolean, shine: Float, onTap: () -> Unit) {
     val d = runCatching { CardDesign.valueOf(store.design) }.getOrDefault(CardDesign.AURORA)
-    Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(listOf(Color(d.a), Color(d.b)))).clickable(onClick = onTap)) {
+    val who = listOf(store.holder, store.surname).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "Luntik" }
+    Box(Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(listOf(Color(d.a), Color(d.b)))).clickable(onClick = onTap)) {
         Canvas(Modifier.fillMaxSize()) {
             when (d) {
                 CardDesign.LUNTIK -> drawCircle(Color(0xFFFF8FB8), 36.dp.toPx(), Offset(size.width * 0.72f, size.height * 0.62f))
-                CardDesign.SPONGE -> drawCircle(Color(0xFFFF6AD5), 16.dp.toPx(), Offset(size.width * 0.8f, size.height * 0.3f))
-                CardDesign.SHREK -> drawCircle(Color(0xFF3E7A32), 22.dp.toPx(), Offset(24.dp.toPx(), 24.dp.toPx()))
+                CardDesign.SPONGE -> { repeat(6) { i -> drawCircle(Color(0xFFC98412), 9.dp.toPx(), Offset(size.width * (0.2f + (i % 3) * 0.2f), size.height * (0.35f + i / 3 * 0.28f))) }; drawCircle(Color(0xFFFF6AD5), 14.dp.toPx(), Offset(size.width * 0.82f, size.height * 0.28f)) }
+                CardDesign.SHREK -> { drawCircle(Color(0xFF3E7A32), 22.dp.toPx(), Offset(20.dp.toPx(), 22.dp.toPx())); drawCircle(Color(0xFF3E7A32), 22.dp.toPx(), Offset(size.width - 20.dp.toPx(), 22.dp.toPx())) }
                 else -> {}
             }
-            drawRect(Color.White.copy(0.22f), topLeft = Offset(size.width * (shine - 0.35f), 0f), size = androidx.compose.ui.geometry.Size(size.width * 0.18f, size.height))
+            if (shine > 0f) drawRect(Color.White.copy(0.2f), topLeft = Offset(size.width * (shine - 0.3f), 0f), size = androidx.compose.ui.geometry.Size(size.width * 0.16f, size.height))
         }
         Column(Modifier.padding(16.dp)) {
-            if (!back) { Text(d.title, color = Color.White, fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Text(store.pan, color = Color.White); Text(extra.exp, color = Color.White.copy(0.8f), fontSize = 12.sp) }
-            else { Box(Modifier.fillMaxWidth().height(28.dp).background(Color.Black)); Spacer(Modifier.height(12.dp)); Text("CVC ${store.cvc}  ·  ${extra.exp}", color = Color.Black, modifier = Modifier.background(Color.White).padding(6.dp)); Text(store.holder.ifBlank { "подпись" }, color = Color.White) }
+            if (!back) { Text(who, color = Color.White, fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Text(store.pan, color = Color.White); Text(extra.exp, color = Color.White.copy(0.8f), fontSize = 12.sp) }
+            else { Box(Modifier.fillMaxWidth().height(28.dp).background(Color.Black)); Spacer(Modifier.height(12.dp)); Text("CVC ${store.cvc}   ${extra.exp}", color = Color.White, fontWeight = FontWeight.Bold); Text(who, color = Color.White.copy(0.85f)) }
         }
     }
 }
 @Composable
-private fun ClickTab(store: WalletStore, extra: CardExtra, accent: Long, anim: Boolean, refresh: () -> Unit) {
+private fun ClickTab(store: WalletStore, extra: CardExtra, accent: Long, refresh: () -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var panel by remember { mutableStateOf(false) }
     var shop by remember { mutableStateOf(false) }
@@ -259,7 +240,7 @@ private fun ClickTab(store: WalletStore, extra: CardExtra, accent: Long, anim: B
         }
     }
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectHorizontalDragGestures { _, drag -> if (drag < -30) panel = true } }) {
-        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(if (store.clickBanUntil > now) "Бан" else if (store.sessionEnd > now) "Сессия" else "Готов", color = Color.White.copy(0.65f))
             Box(Modifier.size(132.dp).clip(CircleShape).background(Color(accent)).clickable(enabled = store.sessionEnd > now && store.clickBanUntil < now && !check) { msg = store.registerTap(System.currentTimeMillis()) ?: ""; refresh() }, contentAlignment = Alignment.Center) { Text("TAP", color = Color.Black, fontWeight = FontWeight.Bold) }
             if (store.sessionEnd <= now) GlassBtn(if (store.cooldownEnd > now || store.clickBanUntil > now) "Жди" else "Сессия", accent) { store.startSession(now) }
@@ -267,22 +248,20 @@ private fun ClickTab(store: WalletStore, extra: CardExtra, accent: Long, anim: B
             if (shop) {
                 GlassBtn("Тап +0.1 (80)", accent) { if (store.balance >= 80) { store.balance -= 80; store.tapValue += 0.1 }; refresh() }
                 GlassBtn("Кулдаун −1 (120)", accent) { if (store.cooldownMin > 5 && store.balance >= 120) { store.balance -= 120; store.cooldownMin-- }; refresh() }
+                GlassBtn("Сессия +1 (120)", accent) { if (store.sessionMin < 15 && store.balance >= 120) { store.balance -= 120; store.sessionMin++ }; refresh() }
+                GlassBtn("Снять антибот (5000)", accent) { if (store.balance >= 5000) { store.balance -= 5000; store.antibotOff = true }; refresh() }
+                GlassBtn("Автокликер на сессию (400)", accent) { if (store.balance >= 400) { store.balance -= 400; store.autoUntil = System.currentTimeMillis() + store.sessionMin * 60_000L }; refresh() }
             }
             if (msg.isNotBlank()) Text(msg, color = Color(0xFFFF8A9A), fontSize = 12.sp)
-            if (check) {
-                Text("5 точек $hits/5", color = Color.White)
-                spots.forEachIndexed { i, o -> if (i >= hits) Box(Modifier.offset(x = (o.x * 200).dp, y = (o.y * 80).dp).size(36.dp).clip(CircleShape).background(Color(0xFF5CFFB0)).clickable { hits++; if (hits >= 5) { store.checksDone++; check = false } }) }
-            }
+            if (check) spots.forEachIndexed { i, o -> if (i >= hits) Box(Modifier.offset(x = (o.x * 180).dp, y = (o.y * 70).dp).size(36.dp).clip(CircleShape).background(Color(0xFF5CFFB0)).clickable { hits++; if (hits >= 5) { store.checksDone++; check = false } }) }
         }
-        if (panel) Column(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(230.dp).background(Color.White.copy(0.14f)).padding(14.dp)) {
-            Text("Вывод", color = Color.White, fontWeight = FontWeight.Bold)
-            BasicTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(8) }, textStyle = TextStyle(color = Color.White), cursorBrush = SolidColor(Color.White))
-            GlassBtn("Вывести", accent) {
-                msg = store.requestPayout(amount.toDoubleOrNull() ?: 0.0)
-                if (msg.startsWith("Заявка")) extra.add("Вывод $amount LC")
-                refresh()
+        AnimatedVisibility(visible = panel, modifier = Modifier.align(Alignment.CenterEnd), enter = slideInHorizontally(tween(280)) { it } + fadeIn(tween(200)), exit = slideOutHorizontally(tween(200)) { it } + fadeOut(tween(140))) {
+            Column(Modifier.fillMaxHeight().width(230.dp).background(Color.White.copy(0.14f)).padding(14.dp)) {
+                Text("Вывод", color = Color.White, fontWeight = FontWeight.Bold)
+                BasicTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(8) }, textStyle = TextStyle(color = Color.White), cursorBrush = SolidColor(Color.White))
+                GlassBtn("Вывести", accent) { msg = store.requestPayout(amount.toDoubleOrNull() ?: 0.0); if (msg.startsWith("Заявка")) extra.add("Вывод $amount LC"); refresh() }
+                Text("Закрыть", color = Color(accent), modifier = Modifier.clickable { panel = false })
             }
-            Text("Закрыть", color = Color(accent), modifier = Modifier.clickable { panel = false })
         }
     }
 }
