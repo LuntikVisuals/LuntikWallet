@@ -2,12 +2,31 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <queries><package android:name="com.luntik.store" /></queries>
-    <application android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:label="LuntikWallet" android:theme="@style/Theme.LuntikWallet" android:supportsRtl="true">
-        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="portrait">
+    <application android:allowBackup="true" android:hardwareAccelerated="true" android:icon="@drawable/ic_wallet" android:label="LuntikWallet" android:theme="@style/Theme.LuntikWallet" android:supportsRtl="true">
+        <activity android:name=".MainActivity" android:exported="true" android:hardwareAccelerated="true" android:screenOrientation="portrait" />
+        <activity-alias android:name=".IconDefault" android:enabled="true" android:exported="true" android:icon="@drawable/ic_wallet" android:label="LuntikWallet" android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias android:name=".IconLuntik" android:enabled="false" android:exported="true" android:icon="@drawable/ic_luntik" android:label="LuntikWallet" android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconSponge" android:enabled="false" android:exported="true" android:icon="@drawable/ic_sponge" android:label="LuntikWallet" android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".IconShrek" android:enabled="false" android:exported="true" android:icon="@drawable/ic_shrek" android:label="LuntikWallet" android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
     </application>
 </manifest>
