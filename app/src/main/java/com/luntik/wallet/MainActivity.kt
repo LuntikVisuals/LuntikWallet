@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
         setContent { WalletRoot() }
     }
 }
-private enum class Tab { CARD, CLICK, SET }
+private enum class Tab { CARD, CLICK, RULES, SET }
 private val accents = listOf(0xFF8B9CFF, 0xFF5CFFB0, 0xFFFF8FB8, 0xFFFFE14A, 0xFF6FA84A)
 private val bgs = listOf(0xFF07070C to 0xFF141428, 0xFF101820 to 0xFF1C2834, 0xFF1A1020 to 0xFF2A1830)
 
@@ -96,26 +96,34 @@ fun WalletRoot() {
             }
             return@Box
         }
+        if (extra.forever) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Бан навсегда", color = Color(0xFFFF8A9A), fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Text("2.3 ${extra.banReason}", color = Color.White, modifier = Modifier.padding(16.dp))
+                Text("Перевыпуск закрыт", color = Color.White.copy(0.7f))
+            }
+            return@Box
+        }
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Text("Кликер ${"%.1f".format(bal)} · карта ${"%.1f".format(cardBal)}", color = Color.White, modifier = Modifier.padding(20.dp))
             Box(Modifier.weight(1f)) {
                 when (tab) {
                     Tab.CARD -> CardTab(store, extra, accent, anim, ::refresh)
                     Tab.CLICK -> ClickTab(store, extra, accent, ::refresh)
+                    Tab.RULES -> RulesTab(accent, extra.forever, extra.banReason)
                     Tab.SET -> SettingsTab(accent, anim, { accent = it; prefs.edit().putLong("accent", it).apply() }, { bg = it; prefs.edit().putInt("bg", it).apply() }, { anim = it; prefs.edit().putBoolean("anim", it).apply() })
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding().clip(RoundedCornerShape(28.dp)).background(Color.White.copy(0.08f)).padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf(Tab.CARD to "Карта", Tab.CLICK to "Кликер", Tab.SET to "Настройки").forEach { (t, n) ->
-                    Text(n, color = if (tab == t) Color.Black else Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (tab == t) Color(accent) else Color.Transparent).clickable { tab = t }.padding(horizontal = 16.dp, vertical = 10.dp))
+            Row(Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding().clip(RoundedCornerShape(28.dp)).background(Color.White.copy(0.08f)).padding(6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf(Tab.CARD to "Карта", Tab.CLICK to "Кликер", Tab.RULES to "Правила", Tab.SET to "Ещё").forEach { (t, n) ->
+                    Text(n, color = if (tab == t) Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(if (tab == t) Color(accent) else Color.Transparent).clickable { tab = t }.padding(horizontal = 10.dp, vertical = 10.dp))
                 }
             }
         }
         AnimatedVisibility(visible = glass, enter = slideInHorizontally(tween(if (anim) 280 else 1)) { -it } + fadeIn(tween(if (anim) 220 else 1)), exit = slideOutHorizontally(tween(if (anim) 220 else 1)) { -it } + fadeOut(tween(if (anim) 160 else 1))) {
             Column(Modifier.fillMaxHeight().width(250.dp).statusBarsPadding().clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)).background(Color.White.copy(0.14f)).border(1.dp, Color.White.copy(0.28f), RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)).pointerInput(Unit) { detectVerticalDragGestures { _, drag -> if (drag > 40) glass = false } }.padding(16.dp)) {
                 Text("Стекло", color = Color.White, fontWeight = FontWeight.Bold)
-                GlassBtn("Карта", accent) { tab = Tab.CARD; glass = false }
-                GlassBtn("Кликер", accent) { tab = Tab.CLICK; glass = false }
+                GlassBtn("Правила", accent) { tab = Tab.RULES; glass = false }
                 Text("Закрыть", color = Color(accent), modifier = Modifier.clickable { glass = false }.padding(8.dp))
             }
         }
@@ -161,7 +169,7 @@ private fun CardTab(store: WalletStore, extra: CardExtra, accent: Long, anim: Bo
                 CardFace(store, extra, turn.value > 0.5f, shineX.value) { flip() }
                 GlassBtn(if (back) "Лицо" else "Перевернуть", accent) { flip() }
                 GlassBtn(if (store.frozen) "Разморозить" else "Заморозить", accent) { store.frozen = !store.frozen }
-                GlassBtn("Перевыпуск", accent) { store.reissue(); phase = store.phase }
+                GlassBtn(if (extra.forever) "Перевыпуск закрыт" else "Перевыпуск", accent) { if (!extra.forever) { store.reissue(); phase = store.phase } else note = "2.3 бан навсегда" }
             }
         }
         if (askPin) {
