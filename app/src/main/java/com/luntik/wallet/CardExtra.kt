@@ -11,6 +11,12 @@ class CardExtra(ctx: Context) {
     var exp: String
         get() = p.getString("exp", "")!!
         set(v) = p.edit().putString("exp", v).apply()
+    var forever: Boolean
+        get() = p.getBoolean("forever", false)
+        set(v) = p.edit().putBoolean("forever", v).apply()
+    var banReason: String
+        get() = p.getString("banWhy", "")!!
+        set(v) = p.edit().putString("banWhy", v).apply()
     fun ensureExp() {
         if (exp.isBlank()) exp = "%02d/%02d".format(Random.nextInt(1, 13), Random.nextInt(28, 32))
     }
@@ -18,5 +24,10 @@ class CardExtra(ctx: Context) {
     fun add(line: String) {
         val next = (listOf(line) + history()).take(10).joinToString("\n")
         p.edit().putString("hist", next).apply()
+    }
+    fun foreverBan(why: String) {
+        forever = true
+        banReason = why
+        add("Бан навсегда: $why")
     }
 }
