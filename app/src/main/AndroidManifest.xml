@@ -3,7 +3,18 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <queries><package android:name="com.luntik.store" /></queries>
     <application android:allowBackup="true" android:hardwareAccelerated="true" android:icon="@drawable/ic_wallet" android:label="LuntikWallet" android:theme="@style/Theme.LuntikWallet" android:supportsRtl="true">
-        <activity android:name=".MainActivity" android:exported="true" android:hardwareAccelerated="true" android:screenOrientation="portrait" />
+        <activity android:name=".MainActivity" android:exported="true" android:hardwareAccelerated="true" android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="com.luntik.store.CONFIRM_WALLET" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".PayActivity" android:exported="true" android:hardwareAccelerated="true" android:screenOrientation="portrait">
+            <intent-filter>
+                <action android:name="com.luntik.wallet.PAY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <activity-alias android:name=".IconDefault" android:enabled="true" android:exported="true" android:icon="@drawable/ic_wallet" android:label="LuntikWallet" android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
