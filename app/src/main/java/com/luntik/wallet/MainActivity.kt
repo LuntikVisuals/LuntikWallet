@@ -10,7 +10,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -32,7 +36,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -50,12 +53,12 @@ class MainActivity : ComponentActivity() {
         setContent { WalletRoot() }
     }
     private fun enableHighRefresh() {
-        val modes = if (Build.VERSION.SDK_INT >= 30) display?.supportedModes else null
-        val best = modes?.maxByOrNull { it.refreshRate }
         val lp = window.attributes
-        if (best != null) lp.preferredDisplayModeId = best.modeId else lp.preferredRefreshRate = 120f
+        if (Build.VERSION.SDK_INT >= 30) {
+            val best = display?.supportedModes?.maxByOrNull { it.refreshRate }
+            if (best != null) lp.preferredDisplayModeId = best.modeId
+        } else lp.preferredRefreshRate = 120f
         window.attributes = lp
-        if (Build.VERSION.SDK_INT >= 31) window.setFrameRate(best?.refreshRate ?: 120f, android.view.Window.FRAME_RATE_COMPATIBILITY_DEFAULT)
     }
 }
 
@@ -94,12 +97,10 @@ fun WalletRoot() {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             Text("Кликер ${"%.1f".format(bal)} · карта ${"%.1f".format(cardBal)}", color = Color.White, modifier = Modifier.padding(20.dp))
             Box(Modifier.weight(1f)) {
-                AnimatedContent(tab, transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) }, label = "tab") {
-                    when (it) {
-                        Tab.CARD -> CardTab(store, accent, ::refresh)
-                        Tab.CLICK -> ClickTab(store, accent, ::refresh)
-                        Tab.SET -> SettingsTab(accent, bg, { accent = it; prefs.edit().putLong("accent", it).apply() }, { bg = it; prefs.edit().putInt("bg", it).apply() })
-                    }
+                when (tab) {
+                    Tab.CARD -> CardTab(store, accent, ::refresh)
+                    Tab.CLICK -> ClickTab(store, accent, ::refresh)
+                    Tab.SET -> SettingsTab(accent) { accent = it; prefs.edit().putLong("accent", it).apply() }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding().clip(RoundedCornerShape(28.dp)).background(Color.White.copy(0.08f)).padding(8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -108,11 +109,9 @@ fun WalletRoot() {
                 }
             }
         }
-        AnimatedVisibility(glass, enter = slideInHorizontally(tween(280)) { -it } + fadeIn(tween(220)), exit = slideOutHorizontally(tween(220)) { -it } + fadeOut(tween(160))) {
+        AnimatedVisibility(visible = glass, enter = slideInHorizontally(tween(280)) { -it } + fadeIn(tween(220)), exit = slideOutHorizontally(tween(220)) { -it } + fadeOut(tween(160))) {
             Column(Modifier.fillMaxHeight().width(250.dp).statusBarsPadding().clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)).background(Color.White.copy(0.14f)).border(1.dp, Color.White.copy(0.28f), RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp)).padding(16.dp)) {
                 Text("Стекло", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text("120 Гц, если экран умеет", color = Color.White.copy(0.6f), fontSize = 12.sp)
-                Spacer(Modifier.height(12.dp))
                 GlassBtn("Карта", accent) { tab = Tab.CARD; glass = false }
                 GlassBtn("Кликер", accent) { tab = Tab.CLICK; glass = false }
                 GlassBtn("Настройки", accent) { tab = Tab.SET; glass = false }
@@ -135,15 +134,14 @@ private fun CardTab(store: WalletStore, accent: Long, refresh: () -> Unit) {
     var style by remember { mutableStateOf(CardDesign.LUNTIK.name) }
     LaunchedEffect(phase) {
         while (phase == CardPhase.REVIEW || phase == CardPhase.TEST_WAIT || phase == CardPhase.MAKING) {
-            delay(1500)
-            store.tickCard(); store.tickPayout(System.currentTimeMillis()); phase = store.phase; refresh()
+            delay(1500); store.tickCard(); phase = store.phase; refresh()
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         when (phase) {
             CardPhase.NONE -> GlassBtn("Выпустить карту", accent) { store.issue(); phase = store.phase }
             CardPhase.REVIEW, CardPhase.TEST_WAIT, CardPhase.MAKING -> {
-                Text(when (phase) { CardPhase.REVIEW -> "Рассмотрение"; CardPhase.TEST_WAIT -> "Ждём тест"; else -> "Карта делается" }, color = Color.White)
+                Text(phase.name, color = Color.White)
                 GlassBtn("Ускорить сейчас", accent) { phase = store.skipNow(); refresh() }
             }
             CardPhase.REJECTED -> GlassBtn("Подать снова", accent) { store.issue(); phase = store.phase }
@@ -176,16 +174,17 @@ private fun WalletStore.skipNow(): CardPhase {
 }
 
 @Composable
-private fun SettingsTab(accent: Long, bg: Int, onAccent: (Long) -> Unit, onBg: (Int) -> Unit) {
+private fun SettingsTab(accent: Long, onAccent: (Long) -> Unit) {
     val ctx = LocalContext.current
+    val prefs = ctx.getSharedPreferences("wallet_ui", 0)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Text("Акцент", color = Color.White)
         Row { accents.forEach { GlassChip(" ", accent == it, it) { onAccent(it) }; Spacer(Modifier.width(6.dp)) } }
         Text("Фон", color = Color.White, modifier = Modifier.padding(top = 12.dp))
-        GlassBtn("Тёмный", accent) { onBg(0) }
-        GlassBtn("Синий", accent) { onBg(1) }
-        GlassBtn("Ночной", accent) { onBg(2) }
-        Text("Иконка на рабочем столе. Лаунчер может обновить её через пару секунд.", color = Color.White.copy(0.6f), fontSize = 12.sp)
+        GlassBtn("Тёмный", accent) { prefs.edit().putInt("bg", 0).apply() }
+        GlassBtn("Синий", accent) { prefs.edit().putInt("bg", 1).apply() }
+        GlassBtn("Ночной", accent) { prefs.edit().putInt("bg", 2).apply() }
+        Text("Иконка может обновиться через пару секунд.", color = Color.White.copy(0.6f), fontSize = 12.sp)
         GlassBtn("Иконка: стекло", accent) { setIcon(ctx, "IconDefault") }
         GlassBtn("Иконка: Лунтик", accent) { setIcon(ctx, "IconLuntik") }
         GlassBtn("Иконка: Спанчбоб", accent) { setIcon(ctx, "IconSponge") }
@@ -203,11 +202,9 @@ private fun setIcon(ctx: android.content.Context, which: String) {
 @Composable
 private fun CardFace(store: WalletStore, back: Boolean) {
     val d = runCatching { CardDesign.valueOf(store.design) }.getOrDefault(CardDesign.AURORA)
-    AnimatedContent(back, transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(160)) }, label = "flip") { showBack ->
-        Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(listOf(Color(d.a), Color(d.b)))).padding(16.dp)) {
-            if (!showBack) Column { Text(d.title, color = Color.White, fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Text(store.pan, color = Color.White) }
-            else Column { Box(Modifier.fillMaxWidth().height(28.dp).background(Color.Black)); Spacer(Modifier.height(12.dp)); Text("CVC ${store.cvc}", color = Color.Black, modifier = Modifier.background(Color.White).padding(6.dp)) }
-        }
+    Box(Modifier.fillMaxWidth().height(180.dp).clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(listOf(Color(d.a), Color(d.b)))).padding(16.dp)) {
+        if (!back) Column { Text(d.title, color = Color.White, fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Text(store.pan, color = Color.White) }
+        else Column { Box(Modifier.fillMaxWidth().height(28.dp).background(Color.Black)); Spacer(Modifier.height(12.dp)); Text("CVC ${store.cvc}", color = Color.Black, modifier = Modifier.background(Color.White).padding(6.dp)) }
     }
 }
 
@@ -219,37 +216,34 @@ private fun ClickTab(store: WalletStore, accent: Long, refresh: () -> Unit) {
     var msg by remember { mutableStateOf("") }
     var check by remember { mutableStateOf(false) }
     var hits by remember { mutableIntStateOf(0) }
-    var spots by remember { mutableStateOf(emptyList<Offset>()) }
     LaunchedEffect(Unit) {
         while (true) {
             now = System.currentTimeMillis(); store.closeSession(now)
             if (store.pendingAmount > 0) { store.tickPayout(now); refresh() }
             if (store.sessionEnd > now && !store.antibotOff && store.autoUntil < now) {
                 val due = ((store.sessionMin * 60_000L - (store.sessionEnd - now)) / 60_000L).toInt()
-                if (due > store.checksDone && !check) { check = true; hits = 0; spots = List(5) { Offset(Random.nextFloat(), Random.nextFloat()) } }
+                if (due > store.checksDone && !check) { check = true; hits = 0 }
             }
             delay(1000)
         }
     }
-    Box(Modifier.fillMaxSize().pointerInput(Unit) { detectHorizontalDragGestures { _, drag -> if (drag < -30) panel = true } }) {
+    Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(if (store.clickBanUntil > now) "Бан" else if (store.sessionEnd > now) "Сессия" else "Готов", color = Color.White.copy(0.65f))
             Box(Modifier.size(132.dp).clip(CircleShape).background(Color(accent)).clickable(enabled = store.sessionEnd > now && store.clickBanUntil < now && !check) { msg = store.registerTap(System.currentTimeMillis()) ?: ""; refresh() }, contentAlignment = Alignment.Center) { Text("TAP", color = Color.Black, fontWeight = FontWeight.Bold) }
             if (store.sessionEnd <= now) GlassBtn(if (store.cooldownEnd > now || store.clickBanUntil > now) "Жди" else "Сессия", accent) { store.startSession(now) }
+            GlassBtn("Вывод", accent) { panel = true }
             if (msg.isNotBlank()) Text(msg, color = Color(0xFFFF8A9A), fontSize = 12.sp)
             if (check) {
                 Text("5 точек $hits/5", color = Color.White)
-                spots.forEachIndexed { i, _ -> if (i >= hits) Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF5CFFB0)).clickable { hits++; if (hits >= 5) { store.checksDone++; check = false } }) }
-                LaunchedEffect(hits) { delay(8000); if (hits < 5) { store.fails++; check = false; if (store.fails >= 3) { store.sessionEnd = 1; store.closeSession(now) } } }
+                repeat(5 - hits) { Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF5CFFB0)).clickable { hits++; if (hits >= 5) { store.checksDone++; check = false } }) }
             }
         }
-        AnimatedVisibility(panel, Modifier.align(Alignment.CenterEnd), slideInHorizontally(tween(280)) { it }, slideOutHorizontally(tween(200)) { it }) {
-            Column(Modifier.fillMaxHeight().width(230.dp).background(Color.White.copy(0.14f)).border(1.dp, Color.White.copy(0.25f)).padding(14.dp)) {
-                Text("Вывод", color = Color.White, fontWeight = FontWeight.Bold)
-                BasicTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(8) }, textStyle = TextStyle(color = Color.White), cursorBrush = SolidColor(Color.White))
-                GlassBtn("Вывести", accent) { msg = store.requestPayout(amount.toDoubleOrNull() ?: 0.0); refresh() }
-                Text("Закрыть", color = Color(accent), modifier = Modifier.clickable { panel = false })
-            }
+        if (panel) Column(Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(230.dp).background(Color.White.copy(0.14f)).border(1.dp, Color.White.copy(0.25f)).padding(14.dp)) {
+            Text("Вывод", color = Color.White, fontWeight = FontWeight.Bold)
+            BasicTextField(amount, { amount = it.filter { ch -> ch.isDigit() || ch == '.' }.take(8) }, textStyle = TextStyle(color = Color.White), cursorBrush = SolidColor(Color.White))
+            GlassBtn("Вывести", accent) { msg = store.requestPayout(amount.toDoubleOrNull() ?: 0.0); refresh() }
+            Text("Закрыть", color = Color(accent), modifier = Modifier.clickable { panel = false })
         }
     }
 }
