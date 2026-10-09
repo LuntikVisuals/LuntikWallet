@@ -4,8 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Environment
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import org.json.JSONObject
 import java.io.File
 import kotlin.random.Random
@@ -25,7 +23,6 @@ enum class CardPhase { NONE, REVIEW, REJECTED, TEST_WAIT, TEST, MAKING, READY }
 
 class WalletStore(private val ctx: Context) {
     private val p = ctx.getSharedPreferences("wallet", Context.MODE_PRIVATE)
-
     var linked: Boolean
         get() = p.getBoolean("linked", false)
         set(v) = p.edit().putBoolean("linked", v).apply()
@@ -130,26 +127,14 @@ class WalletStore(private val ctx: Context) {
         val now = System.currentTimeMillis()
         when (phase) {
             CardPhase.REVIEW -> if (now - phaseAt >= 60 * 60_000L) {
-                if (Random.nextInt(100) < 75) {
-                    phase = CardPhase.TEST_WAIT
-                    phaseAt = now
-                    notify("Заявка принята", "Тест придёт в течение часа")
-                } else {
-                    phase = CardPhase.REJECTED
-                    phaseAt = now
-                    notify("Заявка отклонена", "Можно подать снова")
-                }
+                if (Random.nextInt(100) < 75) { phase = CardPhase.TEST_WAIT; phaseAt = now; notify("Заявка принята", "Тест придёт в течение часа") }
+                else { phase = CardPhase.REJECTED; phaseAt = now; notify("Заявка отклонена", "Можно подать снова") }
             }
-            CardPhase.TEST_WAIT -> if (now - phaseAt >= 60 * 60_000L) {
-                phase = CardPhase.TEST
-                phaseAt = now
-                notify("Тест пришёл", "Заполни анкету и выбери стиль")
-            }
+            CardPhase.TEST_WAIT -> if (now - phaseAt >= 60 * 60_000L) { phase = CardPhase.TEST; phaseAt = now; notify("Тест пришёл", "Заполни анкету") }
             CardPhase.MAKING -> if (now - phaseAt >= 30 * 60_000L) finishCard()
             else -> {}
         }
     }
-
     fun rushReview(): String {
         if (phase != CardPhase.REVIEW) return "Нет заявки"
         if (balance < 100.0) return "Нужно 100 LC"
@@ -157,7 +142,6 @@ class WalletStore(private val ctx: Context) {
         phaseAt = System.currentTimeMillis() - 59 * 60_000L
         return "Ответ примерно через минуту"
     }
-
     fun rushTest(): String {
         if (phase != CardPhase.TEST_WAIT) return "Тест уже здесь или ещё не одобрено"
         if (balance < 100.0) return "Нужно 100 LC"
@@ -167,48 +151,30 @@ class WalletStore(private val ctx: Context) {
         notify("Тест пришёл", "Заполни анкету")
         return "Тест открыт"
     }
-
     fun submitTest(why: String, debit: Boolean, name: String, sur: String, tel: String, style: String): String {
         if (name.trim().length < 2) return "Имя обязательно"
         if (why.trim().length < 3) return "Напиши, зачем карта"
-        purpose = why.trim()
-        kind = if (debit) "дебет" else "кредит"
-        holder = name.trim()
-        surname = sur.trim()
-        phone = tel.trim()
-        design = style
-        phase = CardPhase.MAKING
-        phaseAt = System.currentTimeMillis()
+        purpose = why.trim(); kind = if (debit) "дебет" else "кредит"
+        holder = name.trim(); surname = sur.trim(); phone = tel.trim(); design = style
+        phase = CardPhase.MAKING; phaseAt = System.currentTimeMillis()
         return "Анкета принята. Карта делается ~30 мин"
     }
-
-    fun issue() {
-        phase = CardPhase.REVIEW
-        phaseAt = System.currentTimeMillis()
-        told = ""
-    }
-
-    fun reissue() {
-        frozen = false
-        pan = ""
-        cvc = ""
-        issue()
-    }
-
+    fun issue() { phase = CardPhase.REVIEW; phaseAt = System.currentTimeMillis(); told = "" }
+    fun reissue() { frozen = false; pan = ""; cvc = ""; issue() }
     fun registerTap(now: Long): String? {
         if (clickBanUntil > now) return "Бан кликера"
-        val gap = now - lastTapAt
+        val prev = lastTapAt
+        val gap = now - prev
         lastTapAt = now
-        if (lastTapAt != 0L && gap in 0..49) {
+        if (prev != 0L && gap in 0..49) {
             clickBanUntil = now + 10 * 60_000L
             sessionEnd = 0
             notify("Античит", "Слишком быстрые тапы. Бан на 10 минут")
-            return "Бан 10 мин: тапы быстрее 50 мс"
+            return "Бан 10 мин"
         }
         balance += tapValue
         return null
     }
-
     private fun finishCard() {
         phase = CardPhase.READY
         pan = buildString { repeat(4) { append(Random.nextInt(1000, 9999)); if (it < 3) append(' ') } }
@@ -216,65 +182,40 @@ class WalletStore(private val ctx: Context) {
         writeStoreRecord()
         notify("Карта готова", "$kind · $pan")
     }
-
     fun closeSession(now: Long) {
-        if (sessionEnd in 1..now && cooldownEnd < now) {
-            cooldownEnd = now + cooldownMin * 60_000L
-            sessionEnd = 0
-            autoUntil = 0
-        }
+        if (sessionEnd in 1..now && cooldownEnd < now) { cooldownEnd = now + cooldownMin * 60_000L; sessionEnd = 0; autoUntil = 0 }
     }
-
     fun startSession(now: Long): String? {
         if (clickBanUntil > now) return "Бан кликера"
         closeSession(now)
         if (cooldownEnd > now) return "Кулдаун"
         if (sessionEnd > now) return null
         sessionEnd = now + sessionMin * 60_000L
-        fails = 0
-        checksDone = 0
-        lastTapAt = 0
+        fails = 0; checksDone = 0; lastTapAt = 0
         return null
     }
-
     fun tickPayout(now: Long) {
         if (pendingAmount > 0 && pendingAt in 1..now) {
-            cardBalance += pendingAmount
-            pendingAmount = 0.0
-            pendingAt = 0
-            writeStoreRecord()
-            notify("Вывод зачислен", "На карте ${"%.1f".format(cardBalance)} LC")
+            cardBalance += pendingAmount; pendingAmount = 0.0; pendingAt = 0
+            writeStoreRecord(); notify("Вывод зачислен", "На карте ${"%.1f".format(cardBalance)} LC")
         }
     }
-
     fun requestPayout(raw: Double): String {
         if (phase != CardPhase.READY) return "Сначала выпусти карту"
         if (frozen) return "Карта заморожена"
         if (pendingAmount > 0) return "Уже есть вывод в пути"
         if (raw < 50 || raw > 50_000) return "От 50 до 50 000 LC"
         if (raw > balance) return "Не хватает на кликере"
-        val fee = when {
-            firstWithdraw || freeWithdraw -> 0
-            isHoliday() -> 5
-            else -> 10
-        }
+        val fee = when { firstWithdraw || freeWithdraw -> 0; isHoliday() -> 5; else -> 10 }
         val got = raw * (100 - fee) / 100.0
-        balance -= raw
-        firstWithdraw = false
-        freeWithdraw = false
+        balance -= raw; firstWithdraw = false; freeWithdraw = false
         val wait = Random.nextLong(60_000L, 24 * 60 * 60_000L)
-        pendingAmount = got
-        pendingAt = System.currentTimeMillis() + wait
-        val mins = (wait / 60_000L).coerceAtLeast(1)
-        return "Заявка ${"%.1f".format(got)} LC. На карту примерно через $mins мин. Максимум 24 ч."
+        pendingAmount = got; pendingAt = System.currentTimeMillis() + wait
+        return "Заявка ${"%.1f".format(got)} LC. На карту примерно через ${(wait / 60_000L).coerceAtLeast(1)} мин."
     }
-
     fun claimBonus(): String {
         val now = System.currentTimeMillis()
-        if (now - lastBonusAt < 6 * 60 * 60_000L) {
-            val left = 6 * 60 - (now - lastBonusAt) / 60_000L
-            return "Бонус раз в 6 часов. Ещё ~$left мин"
-        }
+        if (now - lastBonusAt < 6 * 60 * 60_000L) return "Бонус раз в 6 часов"
         lastBonusAt = now
         return when (Random.nextInt(100)) {
             in 0..7 -> { balance += 8.0; "+8 LC" }
@@ -282,21 +223,17 @@ class WalletStore(private val ctx: Context) {
             else -> "Пусто"
         }.also { bonusText = it }
     }
-
     private fun notify(title: String, text: String) {
         val key = "$title|$phase"
         if (told == key) return
         told = key
         try {
-            val nm = ctx.getSystemService(NotificationManager::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-                nm.createNotificationChannel(NotificationChannel("wallet", "LuntikWallet", NotificationManager.IMPORTANCE_DEFAULT))
-            }
-            val n = NotificationCompat.Builder(ctx, "wallet").setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(title).setContentText(text).setAutoCancel(true).build()
-            NotificationManagerCompat.from(ctx).notify(title.hashCode(), n)
+            val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+            if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("wallet", "LuntikWallet", NotificationManager.IMPORTANCE_DEFAULT))
+            val n = android.app.Notification.Builder(ctx, "wallet").setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(title).setContentText(text).setAutoCancel(true).build()
+            nm.notify(title.hashCode(), n)
         } catch (_: Exception) {}
     }
-
     private fun writeStoreRecord() {
         try {
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "LuntikStore")
@@ -305,10 +242,7 @@ class WalletStore(private val ctx: Context) {
         } catch (_: Exception) {}
     }
 }
-
 fun isHoliday(): Boolean {
     val c = java.util.Calendar.getInstance()
-    val m = c.get(java.util.Calendar.MONTH)
-    val d = c.get(java.util.Calendar.DAY_OF_MONTH)
-    return (m == 9 && d == 31) || (m == 0 && d == 1) || (m == 11 && d >= 24)
+    return (c.get(java.util.Calendar.MONTH) == 9 && c.get(java.util.Calendar.DAY_OF_MONTH) == 31) || (c.get(java.util.Calendar.MONTH) == 0 && c.get(java.util.Calendar.DAY_OF_MONTH) == 1) || (c.get(java.util.Calendar.MONTH) == 11 && c.get(java.util.Calendar.DAY_OF_MONTH) >= 24)
 }
