@@ -198,7 +198,8 @@ private val bgs = listOf(0xFF07070C to 0xFF141428, 0xFF101820 to 0xFF1C2834, 0xF
 @Composable private fun CardArt(store: WalletStore, extra: CardExtra, back: Boolean, hide: Boolean, showCvc: Boolean, shine: Float, onCvc: () -> Unit) {
     val d = runCatching { CardDesign.valueOf(store.design) }.getOrDefault(CardDesign.AURORA)
     val who = listOf(store.holder, store.surname).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "Luntik" }
-    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(22.dp)).background(if (back) Color(0xFF1A1A24) else Brush.linearGradient(listOf(Color(d.a), Color(d.b)))).clickable(enabled = back, onClick = onCvc)) {
+    val face: Brush = if (back) SolidColor(Color(0xFF1A1A24)) else Brush.linearGradient(listOf(Color(d.a), Color(d.b)))
+    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(22.dp)).background(face).clickable(enabled = back, onClick = onCvc)) {
         Canvas(Modifier.fillMaxSize()) {
             if (!back) when (d) {
                 CardDesign.LUNTIK -> drawCircle(Color(0xFFFF8FB8), 36.dp.toPx(), Offset(size.width * 0.72f, size.height * 0.62f))
