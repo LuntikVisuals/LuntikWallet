@@ -16,19 +16,22 @@ class PayActivity : ComponentActivity() {
         val store = WalletStore(this)
         val extra = CardExtra(this)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 120, 48, 48) }
-        val head = TextView(this).apply { text = "$title\n${amount.toInt()} LC\n$order"; textSize = 20f }
-        val pin = EditText(this).apply { hint = "пин" }
+        val head = TextView(this).apply { text = "$title\n${amount.toInt()} LC\nна карте ${"%.0f".format(store.cardBalance)} LC"; textSize = 20f }
+        val pin = EditText(this).apply { hint = "пин с оборота карты, 4 цифры" }
+        val cvc = EditText(this).apply { hint = "CVC, 3 цифры" }
         val note = TextView(this)
         val ok = Button(this).apply {
             text = "Оплатить"
             setOnClickListener {
                 val typed = pin.text.toString()
-                val msg = when {
+                val typedCvc = cvc.text.toString()
+                note.text = when {
                     extra.forever -> "Бан 2.3"
                     order.isBlank() -> "Нет номера"
                     extra.paid(order) -> "Уже оплачен"
                     typed != extra.pin || typed.length != 4 -> "Неверный пин"
-                    store.cardBalance < amount -> "На карте не хватает"
+                    typedCvc != store.cvc || typedCvc.length != 3 -> "Неверный CVC"
+                    store.cardBalance < amount -> "На карте не хватает. В кликере ${"%.0f".format(store.balance)} LC"
                     else -> {
                         store.cardBalance -= amount
                         extra.markPaid(order)
@@ -38,10 +41,9 @@ class PayActivity : ComponentActivity() {
                         "ok"
                     }
                 }
-                note.text = msg
             }
         }
-        root.addView(head); root.addView(pin); root.addView(ok); root.addView(note)
+        root.addView(head); root.addView(pin); root.addView(cvc); root.addView(ok); root.addView(note)
         setContentView(root)
     }
 }
